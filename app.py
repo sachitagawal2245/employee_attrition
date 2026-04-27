@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import joblib
 import pandas as pd
+import numpy as np
 import logging
 
 logging.basicConfig(
@@ -16,11 +17,23 @@ try:
 except Exception as e:
     logger.error(f"Error loading model: {str(e)}")
     model = None
+
+
+from fastapi.middleware.cors import CORSMiddleware
+
+ 
 app = FastAPI(
     title="Employee Attrition Prediction API",
     description="Predict employee attrition probability using AdaBoost",
     version="1.0"
 )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # React port
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)  
 class EmployeeInput(BaseModel):
     StockOptionLevel: int = Field(ge=0, le=3, description="Stock option level (0-3)")
     JobSatisfaction: int = Field(ge=1, le=4, description="Job satisfaction rating (1-4)")
@@ -85,19 +98,25 @@ def health():
         "model_loaded": True
     }
 @app.post("/predict")
+@app.post("/predict")
 def predict_attrition(data: EmployeeInput):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     input_df = pd.DataFrame([data.model_dump()])
-    if hasattr(model, "feature_names_in_"):
-        input_df = input_df[model.feature_names_in_]
+    input_df["MonthlyIncome"] = np.log(input_df["MonthlyIncome"] + 1e-9)
+    input_df = input_df[model.feature_names_in_]
+    print("Incoming data:")
+    print(input_df)
     prob = model.predict_proba(input_df)[0][1]
     prediction = model.predict(input_df)[0]
+
     return {
-    "attrition_prediction": int(prediction),
-    "probability": round(float(prob), 3),
-    "risk_level": risk_label(prob)
+        "attrition_prediction": int(prediction),
+        "probability": round(float(prob), 3),
+        "risk_level": risk_label(prob)
     }
+
+
 
 
 
